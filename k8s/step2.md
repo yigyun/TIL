@@ -74,4 +74,139 @@ Minikube가 사용할 가상 머신 환경을 위해 **VirtualBox** 설치가 �
 
 ---
 
-이와 같이 쿠버네티스는 컨테이너화된 애플리케이션을 효율적으로 관리하고, 배포와 확장을 지원함. 클러스터와 다양한 객체들의 상호작용을 통해 강력한 컨테이너 오케스트레이션을 가능하게 함.
+
+# 쿠버네티스 개요: 컨트롤 플레인, 워커 노드, 및 서비스 관리
+
+## 컨트롤 플레인과 워커 노드
+
+1. **컨트롤 플레인**에 명령이 전달되면, **스케줄러**가 현재 실행 중인 Pod를 분석하고 새로 생성할 Pod에 적합한 워커 노드를 찾습니다.
+2. 선택된 워커 노드에서 **kubelet** 서비스가 Pod를 관리하고 배포를 수행합니다.
+
+## Pod와 Service
+
+- **Pod**는 내부 IP 주소를 가지지만, 이 IP는 자주 변경될 수 있어 외부 통신 수단으로는 적합하지 않습니다.
+- Pod를 찾기 어렵기 때문에, 이를 해결하기 위해 **Service** 객체를 통해 Pod를 그룹화하고, 변하지 않는 고정 주소를 제공합니다.
+- 기본적으로 내부 IP만 사용하지만, **Service** 객체를 생성하면 외부에서도 Pod에 접근할 수 있습니다.
+
+### Service 생성 명령
+
+```bash
+kubectl expose deployment <이름> --type=LoadBalancer --port=<포트번호>
+```
+
+이 명령을 통해 Deployment를 외부에 노출하는 Service를 생성합니다. Service의 `type`에는 여러 가지 옵션이 있으며, 주요 옵션은 다음과 같습니다:
+
+- **NodePort**: 클러스터 외부에서 노드의 IP를 통해 접근할 수 있도록 합니다.
+- **ClusterIP**: 클러스터 내부에서만 접근 가능하게 합니다 (기본 옵션).
+- **LoadBalancer**: 외부 로드 밸런서를 통해 접근할 수 있도록 합니다.
+
+## Pod 확장 (Scaling)
+
+애플리케이션의 부하에 따라 Pod의 인스턴스를 늘리기 위해 `scale` 명령을 사용합니다. 여기서 `replicas`는 생성할 Pod의 개수를 의미합니다.
+
+```bash
+kubectl scale deployment/<이름> --replicas=<개수>
+```
+
+## 이미지 업데이트
+
+코드나 애플리케이션을 수정한 경우, 새로운 이미지를 빌드하고 푸시한 후 Deployment를 업데이트할 수 있습니다.
+
+```bash
+kubectl set image deployment/<이름> <컨테이너명>=도커/<이미지이름>
+```
+
+## 배포 상태 확인과 롤백
+
+배포 상태를 확인하고, 필요에 따라 롤백할 수 있습니다.
+
+- **배포 상태 확인**:
+
+  ```bash
+  kubectl rollout status deployment/<이름>
+  ```
+
+- **롤백**:
+
+  ```bash
+  kubectl rollout undo deployment/<이름>
+  ```
+
+- **특정 버전으로 롤백**:
+
+  ```bash
+  kubectl rollout history deployment/<이름> --revision=<버전번호>
+  kubectl rollout undo deployment/<이름> --to-revision=<가고자하는버전>
+  ```
+
+## 선언적 접근 방식 (Declarative Approach)
+
+쿠버네티스는 `docker-compose`와 유사하게 YAML 파일을 통해 설정할 수 있습니다. 선언적 방식에서는 `selector`를 사용해 `matchLabels`나 `matchExpressions`로 객체를 선택합니다.
+
+- **matchExpressions**: 특정 조건을 충족하는 표현식.
+- **matchLabels**: 라벨을 통해 객체를 그룹화.
+
+### 파일 적용 명령
+
+YAML 파일을 작성한 후 다음 명령으로 설정을 적용할 수 있습니다.
+
+```bash
+kubectl apply -f <파일명>.yaml
+```
+
+여러 설정을 하나의 YAML 파일에 정의할 수 있습니다. `---`를 사용해 Service, Deployment, Job 등 여러 객체를 하나의 파일에 함께 정의할 수 있습니다.
+
+## 라벨과 필터링
+
+`metadata`의 `labels`를 통해 객체에 라벨을 설정할 수 있으며, `-l` 옵션을 사용해 특정 라벨을 가진 객체만 필터링하여 삭제나 조회가 가능합니다.
+
+## Liveness Probe 설정
+
+`livenessProbe`를 사용해 컨테이너의 상태를 모니터링하고, 문제가 발생할 경우 재시작을 트리거할 수 있습니다.
+
+### 예제 YAML 파일
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: second-app
+  ports:
+    - protocol: 'TCP'
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: second-app-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: second-app
+      tier: backend
+  template: 
+    metadata:
+      labels:
+        app: second-app
+        tier: backend
+    spec:
+      containers:
+        - name: second-node
+          image: <사용자아이디>/<이미지이름>
+          imagePullPolicy: Always
+          livenessProbe: 
+            httpGet:
+              path: /
+              port: 8080
+            periodSeconds: 10
+            initialDelaySeconds: 5
+```
+
+이 예제는 `backend`라는 이름의 Service와 `second-app-deployment`라는 Deployment를 정의하며, `second-app`이라는 라벨을 사용해 Deployment와 Service를 연결합니다.
+
