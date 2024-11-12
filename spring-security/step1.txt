@@ -1,0 +1,107 @@
+Spring Security를 공부하면서 정리한 내용이다.
+
+Spring Security는 자바 애플리케이션을 위한 강력하고 커스터마이징 가능한 인증 및 인가 프레임워크다. 필터를 통해 인터셉터를 사용하여 요청과 응답에 대해 비즈니스 로직 전에 필요한 처리를 할 수 있다.
+
+Spring Security의 내부 동작 흐름
+요청 수신: 클라이언트가 서버로 요청을 보낸다.
+자격 증명 추출: 필터에서 아이디/비밀번호나 토큰 등의 자격 증명을 추출한다.
+인증 처리: 추출된 자격 증명을 이용해 토큰을 생성하고, 인증 매니저를 통해 인증을 수행한다.
+사용자 확인: 데이터베이스와 사용자 정보를 대조하여 인증하고, 인증 객체를 생성하여 저장 및 전달한다.
+만약 브라우저를 활용한 상호 작용을 한다면, httpBasic 옵션은 비활성화해도 문제가 없다.
+
+버전 6.3 이상부터는 CompromisedPasswordChecker를 통해 유출된 비밀번호를 확인할 수 있다.
+
+기본적으로 Spring Security는 위임(delegation)을 통해 동작하며, 세부적인 보안 처리를 전문화된 컴포넌트에 맡긴다.
+
+HTTPS 트래픽 강제
+requiresChannel을 통해 HTTPS 트래픽만 허용하도록 설정할 수 있다.
+
+requiresSecure(): HTTPS만 허용
+requiresInsecure(): HTTP만 허용 (프로덕션에서는 비추천)
+인증 및 인가 실패 처리
+AuthenticationEntryPoint: 인증되지 않은 사용자의 접근 시 로그인 페이지로 리다이렉트하거나 401 에러를 반환한다.
+AccessDeniedHandler: 인증은 되었지만 권한이 부족한 경우에 403 에러를 처리한다.
+세션 관리와 세션 고정화 보호
+Spring Security는 기본적으로 세션 기반으로 동작하며, sessionManagement를 통해 세션 관련 설정을 할 수 있다.
+
+세션 고정화 공격에 대한 방어 옵션:
+
+changeSessionId(): 세션 ID를 변경하지만 세션 속성은 유지 (기본값)
+newSession(): 새로운 세션을 생성하고 이전 속성은 폐기
+migrateSession(): 속성을 새로운 세션으로 마이그레이션
+폼 로그인 기본 설정
+java
+코드 복사
+.formLogin(config -> config
+    .loginPage("/login")
+    .usernameParameter("userid")
+    .passwordParameter("secretPwd")
+    .defaultSuccessUrl("/home")
+    .failureUrl("/login?error=true")
+    .permitAll())
+커스텀 authenticationSuccessHandler와 authenticationFailureHandler를 구현하여 사용할 수도 있다.
+로그아웃 설정
+java
+코드 복사
+.logout(config -> config
+    .logoutSuccessUrl("/login?logout=true")
+    .invalidateHttpSession(true)
+    .clearAuthentication(true)
+    .deleteCookies("JSESSIONID")
+    .permitAll())
+CORS와 CSRF 설정
+CORS: 다른 오리진의 스크립트 동작을 제어한다. 대표적인 설정 예시는 다음과 같다:
+java
+코드 복사
+http.cors(cors -> cors
+    .configurationSource(request -> {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of("https://example.com"));
+        config.setAllowedMethods(List.of("GET", "POST"));
+        config.setAllowedHeaders(List.of("*"));
+        return config;
+    })
+);
+CSRF 보호: CSRF 공격을 방지하기 위해 설정한다. REST API를 개발하는 경우에는 비활성화할 수 있다.
+java
+코드 복사
+http.csrf().disable();
+권한과 역할 관리
+Spring Security에서 권한과 역할은 GrantedAuthority로 관리된다.
+
+역할(Role): 일반적으로 ROLE_ 접두사가 붙으며, 권한의 집합이다.
+권한(Authority): 세부적인 작업 권한을 나타낸다.
+커스텀 필터 추가
+필요에 따라 OncePerRequestFilter나 GenericFilterBean을 상속하여 커스텀 필터를 추가할 수 있다.
+
+java
+코드 복사
+http.addFilterBefore(new CustomFilter(), UsernamePasswordAuthenticationFilter.class);
+토큰 기반 인증
+JWT(Json Web Token): 헤더, 페이로드, 서명으로 구성되며 Base64로 인코딩된다. 클라이언트에 모든 정보를 담고 있어 서버에서 상태를 유지하지 않아도 된다.
+Opaque Token: 길고 랜덤한 문자열로 구성되며, 서버에서만 해석 가능하다.
+메서드 레벨 보안
+java
+코드 복사
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+prePostEnabled: @PreAuthorize와 @PostAuthorize 사용 가능
+securedEnabled: @Secured 사용 가능
+jsr250Enabled: @RolesAllowed 사용 가능
+OAuth2와 OpenID Connect
+OAuth2 Grant Types:
+
+Authorization Code with PKCE: 클라이언트 시크릿 없이 안전하게 인증 코드를 교환할 수 있다.
+Resource Owner Password Credentials: 신뢰할 수 있는 애플리케이션에서만 사용하며, OAuth 2.1에서는 사용 중단됨.
+Refresh Token Grant: 액세스 토큰이 만료되었을 때 새로운 토큰을 발급받을 때 사용한다.
+JWKS(JSON Web Key Set): JWT를 검증하기 위한 공개 키의 집합으로, 토큰의 유효성을 확인할 때 사용한다.
+
+OpenID Connect: OAuth2 위에 사용자 인증을 위한 계층을 추가한 프로토콜로, 사용자 프로필 정보와 인증 기능을 제공한다.
+
+구현해볼 내용
+Client
+   │
+   ├── Resource Server (Valid Token) - Logic 처리
+   │         │
+   │         └── Keycloak Auth Server (Authentication)
+   │
+   └── Keycloak Auth Server (Not-Valid Token) - 인증 처리
